@@ -5,6 +5,69 @@ function $(a, b) {
 function rng(a) {
 	return Math.floor(Math.random() * (a + 1));
 }
+class Sound {
+	static context = null;
+	static data = {};
+	static loadSounds(obj) {
+		for(const name in obj) {
+			Sound.load(name, obj[name]);
+		}
+	}
+	static load(name, url) {
+		const xhr = new XMLHttpRequest();
+		xhr.open('GET', url, true);
+		xhr.responseType = 'arraybuffer';
+		xhr.onload = () => {
+			if(xhr.status === 200) {
+				Sound.data[name] = new Sound(xhr.response);
+			}
+			else {
+				console.warn('Could not load sound: ' + name, xhr.status);
+			}
+		};
+		xhr.send();
+	}
+	static init() {
+		if(Sound.context === null) {
+			try {
+				Window.AudioContext = window.AudioContext || window.webkitAudioContext;
+				Sound.context = new AudioContext();
+				for(const name in Sound.data) {
+					Sound.data[name].tryDecodeBuffer();
+				}
+			}
+			catch(err) {
+				console.warn('Web Audio API is not supported in this browser', err);
+			}
+		}
+	}
+	static play(name) {
+		const sound = Sound.data[name];
+		if(sound instanceof Sound && sound.ready) {
+			const source = Sound.context.createBufferSource();
+			source.buffer = sound.buffer;
+			source.connect(Sound.context.destination);
+			source.start(0);
+			sound.tsLastPlayed = client.tsCurrentFrame;
+		}
+	}
+	constructor(xhrResponse) {
+		this.buffer = xhrResponse;
+		this.decode = false;
+		this.ready = false;
+		this.tsLastPlayed = -Infinity;
+		this.tryDecodeBuffer();
+	}
+	tryDecodeBuffer() {
+		if(!this.decode && Sound.context !== null) {
+			this.decode = true;
+			Sound.context.decodeAudioData(this.buffer, buffer => {
+				this.buffer = buffer;
+				this.ready = true;
+			});
+		}
+	}
+}
 class XY {
 	constructor(x, y) {
 		this.x = x;
@@ -257,7 +320,7 @@ const game = {
 		game.blocks = {};
 	},
 	newInstruction: instruction => {
-		$('#play', 0).classList.add('hide');
+		$('#reset', 0).classList.add('hide');
 		game.won = false;
 		game.instruction = instruction === undefined ? rng((1 << game.size) - 1) : instruction;
 		$('#instruction', 0).innerText = 'Make ' + game.instruction;
@@ -365,7 +428,7 @@ const game = {
 	},
 	win: () => {
 		game.won = true;
-		$('#play', 0).classList.remove('hide');
+		$('#reset', 0).classList.remove('hide');
 	}
 },
 input = {
@@ -450,12 +513,20 @@ client = {
 	tsLastFrame: 0,
 	init: () => {
 		input.init(['w', 'a', 's', 'd']);
-		client.start();
-	},
-	start: () => {
 		game.init(4);
 		render.init();
+		Sound.loadSounds({
+			'music': 'sounds/music.m4a'
+		});
+	},
+	play: () => {
+		Sound.init();
+		$('#overlay', 0).classList.remove('hide');
+		$('#titlescreen', 0).classList.add('hide');
+		client.start();
 		game.newInstruction();
+	},
+	start: () => {
 		client.requestAnimationFrameID = window.requestAnimationFrame(client.gameLoop);
 	},
 	stop: () => {
@@ -467,6 +538,9 @@ client = {
 		if(tsElapsed > client.tsFpsInterval) {
 			client.tsLastFrame = ts - (tsElapsed % client.tsFpsInterval);
 			const dt = Math.min(tsElapsed * 0.001, 0.05);
+			if(Sound.data['music'].tsLastPlayed + 17450 < client.tsCurrentFrame) {
+				Sound.play('music');
+			}
 			if(!game.won) {
 				if(input.check('w')) {
 					Block.moveUp(true);

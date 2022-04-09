@@ -8,9 +8,14 @@
 	</head>
 	<body>
 		<canvas id="display"></canvas>
-		<div id="overlay">
+		<div id="titlescreen">
+			<h1>Binary Bamboozler</h1>
+			<p>Welcome to blah blah description rules instructions...</p>
+			<a id="play" class="button" onclick="javascript:client.play()">Play Game</a>
+		</div>
+		<div id="overlay" class="hide">
 			<h1 id="instruction"></h1>
-			<a id="play" class="button hide" onclick="javascript:game.newInstruction()">Play Again</a>
+			<a id="reset" class="button hide" onclick="javascript:game.newInstruction()">Play Again</a>
 		</div>
 	</body>
 </html>
