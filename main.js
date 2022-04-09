@@ -21,7 +21,7 @@ class Map2D {
 		return y * this.xSize + x;
 	}
 	reverseIndex(index) {
-		return new XY(Math.floor(index / this.xSize), index % this.xSize);
+		return new XY(index % this.xSize, Math.floor(index / this.xSize));
 	}
 	get(x, y) {
 		return this.data[this.index(x, y)];
@@ -61,7 +61,8 @@ class Block extends XY {
 	static TYPE_BLUE = 0;
 	static TYPE_ORANGE = 1;
 	static TYPE_WHITE = 2;
-	static random(move, value) {
+	static TYPE_GREEN = 3;
+	static random(type, value) {
 		const options = [];
 		game.blockMap.loopAll((x, y) => {
 			if(game.blockMap.get(x, y) === 0) {
@@ -70,10 +71,10 @@ class Block extends XY {
 		});
 		if(options.length !== 0) {
 			const position = options[rng(options.length - 1)];
-			new Block(position.x, position.y, move, value);
+			new Block(position.x, position.y, type, value);
 		}
 	}
-	static moveLeft() {
+	static moveLeft(check) {
 		for(let y = 0; y < game.blockMap.ySize; ++y) {
 			for(let x = 0; x < game.blockMap.xSize; ++x) {
 				const id = game.blockMap.get(x, y);
@@ -90,9 +91,11 @@ class Block extends XY {
 				}
 			}
 		}
-		Block.checkForInstruction();
+		if(check) {
+			Block.checkForInstruction();
+		}
 	}
-	static moveRight() {
+	static moveRight(check) {
 		for(let y = 0; y < game.blockMap.ySize; ++y) {
 			for(let x = game.blockMap.xSize - 1; x >= 0; --x) {
 				const id = game.blockMap.get(x, y);
@@ -109,9 +112,11 @@ class Block extends XY {
 				}
 			}
 		}
-		Block.checkForInstruction();
+		if(check) {
+			Block.checkForInstruction();
+		}
 	}
-	static moveUp() {
+	static moveUp(check) {
 		for(let x = 0; x < game.blockMap.xSize; ++x) {
 			for(let y = 0; y < game.blockMap.ySize; ++y) {
 				const id = game.blockMap.get(x, y);
@@ -128,9 +133,11 @@ class Block extends XY {
 				}
 			}
 		}
-		Block.checkForInstruction();
+		if(check) {
+			Block.checkForInstruction();
+		}
 	}
-	static moveDown() {
+	static moveDown(check) {
 		for(let x = 0; x < game.blockMap.xSize; ++x) {
 			for(let y = game.blockMap.ySize - 1; y >= 0; --y) {
 				const id = game.blockMap.get(x, y);
@@ -147,7 +154,9 @@ class Block extends XY {
 				}
 			}
 		}
-		Block.checkForInstruction();
+		if(check) {
+			Block.checkForInstruction();
+		}
 	}
 	static checkForInstruction() {
 		let instruction = game.instruction.toString(2);
@@ -166,7 +175,16 @@ class Block extends XY {
 				}
 			}
 			if(bin === instruction) {
-				console.log('win');
+				for(const id in game.blocks) {
+					const block = game.blocks[id];
+					if(block.y === y) {
+						block.type = Block.TYPE_GREEN;
+					}
+					else {
+						block.y = Math.floor(render.height / render.blockSize);
+					}
+				}
+				game.win();
 			}
 		}
 		for(let x = 0; x < game.blockMap.xSize; ++x) {
@@ -181,7 +199,16 @@ class Block extends XY {
 				}
 			}
 			if(bin === instruction) {
-				console.log('win');
+				for(const id in game.blocks) {
+					const block = game.blocks[id];
+					if(block.x === x) {
+						block.type = Block.TYPE_GREEN;
+					}
+					else {
+						block.y = Math.floor(render.height / render.blockSize);
+					}
+				}
+				game.win();
 			}
 		}
 	}
@@ -192,8 +219,8 @@ class Block extends XY {
 	}
 	constructor(x, y, type, value) {
 		super(x, y);
-		this.xDraw = x;
-		this.yDraw = y;
+		this.xDraw = x * render.blockSize;
+		this.yDraw = render.height * (1 + rng(9));
 		this.type = type;
 		this.value = value;
 		do {
@@ -204,8 +231,8 @@ class Block extends XY {
 		game.blockMap.set(x, y, this.id);
 	}
 	animate(dt) {
-		this.xDraw += (this.x - this.xDraw) * 10 * dt;
-		this.yDraw += (this.y - this.yDraw) * 10 * dt;
+		this.xDraw += (this.x * render.blockSize - this.xDraw) * 10 * dt;
+		this.yDraw += (this.y * render.blockSize - this.yDraw) * 10 * dt;
 	}
 	moveTo(x, y) {
 		game.blockMap.set(this.x, this.y, 0);
@@ -219,6 +246,7 @@ class Block extends XY {
 	}
 }
 const game = {
+	won: false,
 	instruction: null,
 	size: 0,
 	blockMap: null,
@@ -227,18 +255,117 @@ const game = {
 		game.size = gameSize;
 		game.blockMap = new Map2D(gameSize, gameSize);
 		game.blocks = {};
-		for(let y = 0; y < gameSize; y += 2) {
-			new Block(rng(gameSize - 1), y, Block.TYPE_ORANGE, '');
+	},
+	newInstruction: instruction => {
+		$('#play', 0).classList.add('hide');
+		game.won = false;
+		game.instruction = instruction === undefined ? rng((1 << game.size) - 1) : instruction;
+		$('#instruction', 0).innerText = 'Make ' + game.instruction;
+		Block.destroyAll();
+		for(let i = 0; i < game.blockMap.data.length; ++i) {
+			game.blockMap.data[i] = 0;
+		}
+		const options = [];
+		game.blockMap.loopAll((x, y) => {
+			if(!((x === 0 ^ x === game.blockMap.xSize - 1) && (y === 0 ^ y === game.blockMap.ySize - 1))) {
+				options.push(game.blockMap.index(x, y));
+			}
+		});
+		// place orange blocks
+		for(let i = 0; i < 2; ++i) {
+			if(options.length === 0) {
+				break;
+			}
+			const position = game.blockMap.reverseIndex(options[rng(options.length - 1)]);
+			new Block(position.x, position.y, Block.TYPE_ORANGE, '');
+			game.blockMap.loop(position.x - 1, position.y - 1, position.x + 2, position.y + 2, (x, y) => {
+				const index = options.indexOf(game.blockMap.index(x, y));
+				if(index !== -1) {
+					options.splice(index, 1);
+				}
+			});
+			for(let i = 0; i < game.blockMap.xSize; ++i) {
+				let index = options.indexOf(game.blockMap.index(i, position.y));
+				if(index !== -1) {
+					options.splice(index, 1);
+				}
+				index = options.indexOf(game.blockMap.index(position.x, i));
+				if(index !== -1) {
+					options.splice(index, 1);
+				}
+			}
+		}
+		// place solution
+		const horizontalSolutionOptions = [];
+		for(let y = 0; y < game.blockMap.ySize; ++y) {
+			let add = true;
+			for(const id in game.blocks) {
+				if(game.blocks[id].y === y) {
+					add = false;
+					break;
+				}
+			}
+			if(add) {
+				horizontalSolutionOptions.push(y);
+			}
+		}
+		const verticalSolutionOptions = [];
+		for(let x = 0; x < game.blockMap.xSize; ++x) {
+			let add = true;
+			for(const id in game.blocks) {
+				if(game.blocks[id].x === x) {
+					add = false;
+					break;
+				}
+			}
+			if(add) {
+				verticalSolutionOptions.push(x);
+			}
+		}
+		let solution = game.instruction.toString(2);
+		while(solution.length !== game.size) {
+			solution = '0' + solution;
+		}
+		const useHorizontal = rng(1) === 1;
+		if(useHorizontal) {
+			const y = horizontalSolutionOptions[rng(horizontalSolutionOptions.length - 1)];
+			for(let x = 0; x < game.blockMap.xSize; ++x) {
+				new Block(x, y, Block.TYPE_BLUE, solution.charAt(x));
+			}
+		}
+		else {
+			const x = verticalSolutionOptions[rng(verticalSolutionOptions.length - 1)];
+			for(let y = 0; y < game.blockMap.ySize; ++y) {
+				new Block(x, y, Block.TYPE_BLUE, solution.charAt(y));
+			}
 		}
 		Block.random(Block.TYPE_WHITE, '');
-		for(let i = 0; i < 12; ++i) {
-			Block.random(Block.TYPE_BLUE, i % 2);
+		for(let i = 0; i < solution.length; ++i) {
+			Block.random(Block.TYPE_BLUE, solution.charAt(i) === '1' ? 0 : 1);
 		}
-		game.newInstruction();
+		const count1s = solution.split('1').length - 1;
+		Block.random(Block.TYPE_BLUE, count1s === 2 ? rng(1) : (count1s > 2 ? '1' : '0'));
+		const scramble = 40 + rng(60);
+		for(let i = 0; i < scramble; ++i) {
+			switch(rng(3)) {
+				case 0:
+					Block.moveUp(false);
+				break;
+				case 1:
+					Block.moveDown(false);
+				break;
+				case 2:
+					Block.moveLeft(false);
+				break;
+				case 3:
+					Block.moveRight(false);
+				break;
+			}
+		}
 	},
-	newInstruction: () => {
-		game.instruction = rng((1 << game.size) - 1);
-		$('#instruction', 0).innerText = 'Make ' + game.instruction;
+	win: () => {
+		game.won = true;
+		$('#play', 0).classList.remove('hide');
 	}
 },
 input = {
@@ -307,10 +434,10 @@ render = {
 			const id = game.blockMap.get(x, y);
 			if(id !== 0) {
 				const block = game.blocks[id];
-				render.ctx.fillStyle = ['#06c', '#f63', '#c3c3c3'][block.type];
-				render.ctx.fillRect(block.xDraw * render.blockSize - render.x, block.yDraw * render.blockSize - render.y, render.blockSize, render.blockSize);
+				render.ctx.fillStyle = ['#06c', '#f63', '#c3c3c3', '#3f6'][block.type];
+				render.ctx.fillRect(block.xDraw - render.x, block.yDraw - render.y, render.blockSize, render.blockSize);
 				render.ctx.fillStyle = '#efefef';
-				render.ctx.fillText(block.value, (block.xDraw + 0.5) * render.blockSize - render.x, (block.yDraw + 0.5) * render.blockSize - render.y);
+				render.ctx.fillText(block.value, block.xDraw + 0.5 * render.blockSize - render.x, block.yDraw + 0.5 * render.blockSize - render.y);
 			}
 		});
 	}
@@ -326,8 +453,9 @@ client = {
 		client.start();
 	},
 	start: () => {
-		game.init(5);
+		game.init(4);
 		render.init();
+		game.newInstruction();
 		client.requestAnimationFrameID = window.requestAnimationFrame(client.gameLoop);
 	},
 	stop: () => {
@@ -339,17 +467,19 @@ client = {
 		if(tsElapsed > client.tsFpsInterval) {
 			client.tsLastFrame = ts - (tsElapsed % client.tsFpsInterval);
 			const dt = Math.min(tsElapsed * 0.001, 0.05);
-			if(input.check('w')) {
-				Block.moveUp();
-			}
-			if(input.check('s')) {
-				Block.moveDown();
-			}
-			if(input.check('a')) {
-				Block.moveLeft();
-			}
-			if(input.check('d')) {
-				Block.moveRight();
+			if(!game.won) {
+				if(input.check('w')) {
+					Block.moveUp(true);
+				}
+				if(input.check('s')) {
+					Block.moveDown(true);
+				}
+				if(input.check('a')) {
+					Block.moveLeft(true);
+				}
+				if(input.check('d')) {
+					Block.moveRight(true);
+				}
 			}
 			for(const id in game.blocks) {
 				game.blocks[id].animate(dt);
