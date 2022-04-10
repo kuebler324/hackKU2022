@@ -8,14 +8,16 @@
 	</head>
 	<body>
 		<canvas id="display"></canvas>
-		<div id="titlescreen">
-			<h1>Binary Bamboozler</h1>
-			<p>Welcome to blah blah description rules instructions...</p>
-			<a id="play" class="button" onclick="javascript:client.play()">Play Game</a>
+		<div id="titlescreen" class="overlay">
+			<h1 id="title">Make 16</h1>
+			<a id="play" onclick="javascript:client.play()">Press Enter</a>
+			<span class="bottom">Eric Kuebler | Kieran Delaney | Kevin Likcani<br>2022 PROJECT INSIGHT</span>
 		</div>
-		<div id="overlay" class="hide">
+		<div id="overlay" class="overlay hide">
 			<h1 id="instruction"></h1>
 			<a id="reset" class="button hide" onclick="javascript:game.newInstruction()">Play Again</a>
+			<a id="hint" onclick="javascript:game.getHint()">Hint?</a>
+			<span class="bottom">Arrange the binary digits such that they vertically or horizontally form the base 10 number above<br>Use Arrow Keys or W,A,S,D to make Moves</span>
 		</div>
 	</body>
 </html>

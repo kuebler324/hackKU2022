@@ -41,12 +41,16 @@ class Sound {
 			}
 		}
 	}
-	static play(name) {
+	static play(name, gain) {
 		const sound = Sound.data[name];
 		if(sound instanceof Sound && sound.ready) {
 			const source = Sound.context.createBufferSource();
 			source.buffer = sound.buffer;
 			source.connect(Sound.context.destination);
+			const gainNode = Sound.context.createGain();
+			source.connect(gainNode);
+			gainNode.connect(Sound.context.destination);
+			gainNode.gain.setValueAtTime(gain, Sound.context.currentTime);
 			source.start(0);
 			sound.tsLastPlayed = client.tsCurrentFrame;
 		}
@@ -308,8 +312,20 @@ class Block extends XY {
 		delete game.blocks[this.id];
 	}
 }
+class TitleScreenBlock extends XY {
+	static data = [];
+	constructor() {
+		const theta = rng(359) * Math.PI / 180;
+		super(input.mouse.x + 2 * render.width * Math.cos(theta), input.mouse.y + 2 * render.height * Math.sin(theta));
+		this.theta = theta;
+		this.type = rng(4) !== 0 ? 0 : (rng(2) === 0 ? 2 : 1);
+		this.value = this.type === 0 ? rng(1) : '';
+		TitleScreenBlock.data.push(this);
+	}
+}
 const game = {
 	won: false,
+	hint: 0,
 	instruction: null,
 	size: 0,
 	blockMap: null,
@@ -321,6 +337,9 @@ const game = {
 	},
 	newInstruction: instruction => {
 		$('#reset', 0).classList.add('hide');
+		game.hint = 0;
+		$('#hint', 0).classList.remove('data-0');
+		$('#hint', 0).classList.remove('data-1');
 		game.won = false;
 		game.instruction = instruction === undefined ? rng((1 << game.size) - 1) : instruction;
 		$('#instruction', 0).innerText = 'Make ' + game.instruction;
@@ -426,13 +445,35 @@ const game = {
 			}
 		}
 	},
+	getHint: () => {
+		$('#hint', 0).classList.remove('data-0');
+		$('#hint', 0).classList.remove('data-1');
+		let solution = game.instruction.toString(2);
+		while(solution.length !== game.size) {
+			solution = '0' + solution;
+		}
+		if(++game.hint === 1) {
+			$('#hint', 0).classList.add('data-1');
+			let text = '';
+			for(let i = 0; i < solution.length; ++i) {
+				text += solution.charAt(i) == '1' ? '2<sup>' + (solution.length - 1 - i) + '</sup> + ' : '0 + ';
+			}
+			$('#instruction', 0).innerHTML = 'Make ' + text.slice(0, text.length - 2);
+		}
+		else {
+			$('#hint', 0).classList.add('data-0');
+			$('#instruction', 0).innerText = 'Make ' + solution;
+		}
+	},
 	win: () => {
 		game.won = true;
 		$('#reset', 0).classList.remove('hide');
+		Sound.play('victory', 5);
 	}
 },
 input = {
 	map: null,
+	mouse: new XY(0, 0),
 	init: keys => {
 		input.map = {};
 		for(let i = 0; i < keys.length; ++i) {
@@ -440,6 +481,10 @@ input = {
 		}
 		window.addEventListener('keydown', input.keyEvent);
 		window.addEventListener('keyup', input.keyEvent);
+		window.addEventListener('mousemove', e => {
+			input.mouse.x = e.pageX;
+			input.mouse.y = e.pageY;
+		});
 	},
 	check: key => {
 		const mapValue = input.map[key];
@@ -490,19 +535,22 @@ render = {
 		render.ctx.strokeStyle = '#fff';
 		render.ctx.lineWidth = 2;
 		render.ctx.strokeRect(-2 - render.x, -2 - render.y, game.blockMap.xSize * render.blockSize + 4, game.blockMap.ySize * render.blockSize + 4);
-		render.ctx.font = '48px sans-serif';
-		render.ctx.textBaseline = 'middle';
-		render.ctx.textAlign = 'center';
 		game.blockMap.loopAll((x, y) => {
 			const id = game.blockMap.get(x, y);
 			if(id !== 0) {
 				const block = game.blocks[id];
-				render.ctx.fillStyle = ['#06c', '#f63', '#c3c3c3', '#3f6'][block.type];
-				render.ctx.fillRect(block.xDraw - render.x, block.yDraw - render.y, render.blockSize, render.blockSize);
-				render.ctx.fillStyle = '#efefef';
-				render.ctx.fillText(block.value, block.xDraw + 0.5 * render.blockSize - render.x, block.yDraw + 0.5 * render.blockSize - render.y);
+				render.drawBlock(block.xDraw - render.x, block.yDraw - render.y, render.blockSize, block.type, block.value)
 			}
 		});
+	},
+	drawBlock: (x, y, size, colorIndex, value) => {
+		render.ctx.font = Math.floor(size / 3) + 'px sans-serif';
+		render.ctx.textBaseline = 'middle';
+		render.ctx.textAlign = 'center';
+		render.ctx.fillStyle = ['#06c', '#f63', '#c3c3c3', '#3f6'][colorIndex];
+		render.ctx.fillRect(x, y, size, size);
+		render.ctx.fillStyle = '#efefef';
+		render.ctx.fillText(value, x + 0.5 * size, y + 0.5 * size);
 	}
 },
 client = {
@@ -511,19 +559,23 @@ client = {
 	tsFpsInterval: 1000 / 60,
 	tsCurrentFrame: 0,
 	tsLastFrame: 0,
+	titleScreen: true,
 	init: () => {
-		input.init(['w', 'a', 's', 'd']);
+		input.init(['w', 'a', 's', 'd', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight', 'Enter']);
 		game.init(4);
 		render.init();
 		Sound.loadSounds({
-			'music': 'sounds/music.m4a'
+			'music': 'sounds/music.m4a',
+			'victory': 'sounds/victory.mp3',
+			'move': 'sounds/move.mp3'
 		});
+		client.start();
 	},
 	play: () => {
+		client.titleScreen = false;
 		Sound.init();
 		$('#overlay', 0).classList.remove('hide');
 		$('#titlescreen', 0).classList.add('hide');
-		client.start();
 		game.newInstruction();
 	},
 	start: () => {
@@ -538,27 +590,57 @@ client = {
 		if(tsElapsed > client.tsFpsInterval) {
 			client.tsLastFrame = ts - (tsElapsed % client.tsFpsInterval);
 			const dt = Math.min(tsElapsed * 0.001, 0.05);
-			if(Sound.data['music'].tsLastPlayed + 17450 < client.tsCurrentFrame) {
-				Sound.play('music');
+			if(client.titleScreen) {
+				if(input.check('Enter')) {
+					client.play();
+				}
+				if(rng(Math.floor(dt * 500)) === 0) {
+					new TitleScreenBlock();
+				}
+				render.ctx.clearRect(0, 0, render.width, render.height);
+				for(let i = 0; i < TitleScreenBlock.data.length; ++i) {
+					const block = TitleScreenBlock.data[i];
+					if(((block.x - render.width / 2) ** 2) + ((block.y - render.height / 2) ** 2) > 5000000) {
+						TitleScreenBlock.data.splice(i--, 1);
+						continue;
+					}
+					block.x -= 300 * dt * Math.cos(block.theta);
+					block.y -= 300 * dt * Math.sin(block.theta);
+					render.drawBlock(block.x - render.x, block.y - render.y, 64, block.type, block.value);
+				}
 			}
-			if(!game.won) {
-				if(input.check('w')) {
-					Block.moveUp(true);
+			else {
+				if(Sound.data['music'].tsLastPlayed + 17450 < client.tsCurrentFrame) {
+					Sound.play('music', -0.75);
 				}
-				if(input.check('s')) {
-					Block.moveDown(true);
+				if(game.won) {
+					if(input.check('Enter')) {
+						game.newInstruction();
+					}
 				}
-				if(input.check('a')) {
-					Block.moveLeft(true);
+				else {
+					if(input.check('w') || input.check('ArrowUp')) {
+						Block.moveUp(true);
+						Sound.play('move', -0.5);
+					}
+					if(input.check('s') || input.check('ArrowDown')) {
+						Block.moveDown(true);
+						Sound.play('move', -0.5);
+					}
+					if(input.check('a') || input.check('ArrowLeft')) {
+						Block.moveLeft(true);
+						Sound.play('move', -0.5);
+					}
+					if(input.check('d') || input.check('ArrowRight')) {
+						Block.moveRight(true);
+						Sound.play('move', -0.5);
+					}
 				}
-				if(input.check('d')) {
-					Block.moveRight(true);
+				for(const id in game.blocks) {
+					game.blocks[id].animate(dt);
 				}
+				render.drawAll(dt);
 			}
-			for(const id in game.blocks) {
-				game.blocks[id].animate(dt);
-			}
-			render.drawAll(dt);
 		}
 		client.requestAnimationFrameID = window.requestAnimationFrame(client.gameLoop);
 	}
